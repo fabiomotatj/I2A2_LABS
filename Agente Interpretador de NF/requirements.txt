@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+langchain
+openai
+python-multipart
+fitz
+easyocr
+numpy
