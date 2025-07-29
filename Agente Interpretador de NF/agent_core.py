@@ -1,62 +1,64 @@
 import os
 from langchain.agents import Tool, initialize_agent
-from langchain.chat_models import ChatOpenAI
 import xml.etree.ElementTree as ET
 import fitz
 import easyocr
 from PIL import Image
 import io
 import numpy as np
+import uuid
+from langchain.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+import re
+import json
 
-llm = ChatOpenAI(model="gpt-4", temperature=0)
+apiKey = os.environ["open_ai_key"]
 
-def ler_arquivo_texto(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
+llm = ChatOpenAI(model="gpt-4o",api_key=apiKey)
 
-def extrair_dados_pdf(path: str) -> str:
-    # Aqui você pode implementar OCR real; por enquanto texto simulado
-    texto = "Texto extraído do PDF (simulado para exemplo)"
+def extrair_dados(texto_da_nota: str) -> str:
+
     prompt = f"""
     Extraia as seguintes informações do texto abaixo e retorne um JSON com as chaves:
-    'prestador', 'cnpj', 'data', 'procedimento', 'valor_total'.
+    'prestador', 'cnpj', 'data', 'procedimento', 'valor_total', numero_nota, conselho, tipo_conselho.
 
     Texto da nota:
-    {texto}
+    {texto_da_nota}
     """
-    return llm.predict(prompt)
+    # Criar o prompt template
+    prompt_template = ChatPromptTemplate.from_template(prompt)
 
-def extrair_dados_xml(path: str) -> str:
-    tree = ET.parse(path)
+    # Preencher o template com o texto real da nota
+    messages = prompt_template.format_messages(texto=texto_da_nota)
+
+    # Chamar o modelo
+    resultado =  llm(messages)
+
+    return resultado.content
+
+def extrair_dados_xml(xml_path: str) -> str:
+    tree = ET.parse(xml_path)
     root = tree.getroot()
 
-    prestador = root.findtext(".//prestador//nome") or "Indefinido"
-    cnpj = root.findtext(".//prestador//cnpj") or "Indefinido"
-    procedimento = root.findtext(".//descricao") or "Indefinido"
-    data = root.findtext(".//data_emissao") or "Indefinido"
-    valor = root.findtext(".//valor_total") or "0.0"
+    def percorrer(elem, prefix=''):
+        linhas = []
+        for child in elem:
+            tag = child.tag.split('}')[-1]
+            valor = child.text.strip() if child.text else ''
+            if list(child):
+                linhas += percorrer(child, prefix + tag + ".")
+            elif valor:
+                linhas.append(f"{prefix}{tag}: {valor}")
+        return linhas
 
-    json_str = f"""{{
-        "prestador": "{prestador}",
-        "cnpj": "{cnpj}",
-        "procedimento": "{procedimento}",
-        "data": "{data}",
-        "valor_total": {valor}
-    }}"""
-    return json_str
+    texto_total =  "\n".join(percorrer(root))
 
-def extrair_dados_texto(path: str) -> str:
-    texto = ler_arquivo_texto(path)
-    prompt = f"""
-    Extraia as seguintes informações do texto abaixo e retorne um JSON com as chaves:
-    'prestador', 'cnpj', 'data', 'procedimento', 'valor_total'.
+    resultado =  extrair_dados(texto_total)
 
-    Texto da nota:
-    {texto}
-    """
-    return llm.predict(prompt)
+    return resultado
 
-def detectar_tipo(path: str) -> str:
+def detectar_tipo(path) -> str:
+
     ext = os.path.splitext(path)[1].lower()
     if ext == ".xml":
         return "xml"
@@ -67,54 +69,17 @@ def detectar_tipo(path: str) -> str:
     else:
         return "desconhecido"
 
-tools = [
-    Tool(
-        name="ExtrairPDF",
-        func=extrair_dados_pdf,
-        description="Extrai dados de nota fiscal em PDF ou imagem usando OCR e LLM."
-    ),
-    Tool(
-        name="ExtrairXML",
-        func=extrair_dados_xml,
-        description="Extrai dados de nota fiscal em XML."
-    ),
-    Tool(
-        name="ExtrairTexto",
-        func=extrair_dados_texto,
-        description="Extrai dados de nota fiscal a partir de texto simples usando LLM."
-    ),
-]
+def salvar_temp(file):
+    ext = file.filename.split('.')[-1]
+    path = f"tmp/{uuid.uuid4()}.{ext}"
+    with open(path, "wb") as f:
+        f.write(file.file.read())
+    return path
 
-agent = initialize_agent(
-    tools=tools,
-    llm=llm,
-    agent="zero-shot-react-description",
-    verbose=True
-)
-
-def rodar_agente(path):
-    tipo = detectar_tipo(path)
-    print(f"Tipo detectado: {tipo}")
-
-    if tipo == "xml":
-        resultado = agent.run(f"Use a ferramenta ExtrairXML para processar o arquivo: {path}")
-    elif tipo == "texto":
-        resultado = agent.run(f"Use a ferramenta ExtrairTexto para processar o arquivo: {path}")
-    elif tipo == "pdf":
-        resultado = agent.run(f"Use a ferramenta ExtrairPDF para processar o arquivo: {path}")
-    else:
-        resultado = "Formato não suportado."
-
-    return resultado
-
-def retorna_dados_do_pdf(path):
-    reader = easyocr.Reader(['pt'], gpu=True)
+def extrair_dados_pdf(path: str) -> str:
     texto_total = ""
-
     # Abre o PDF
     doc = fitz.open(path)
-
-    texto_total = ""
 
     for pagina in doc:
         texto = pagina.get_text()
@@ -122,8 +87,10 @@ def retorna_dados_do_pdf(path):
             texto_total += texto + "\n"
 
     if texto_total.strip():
-        return texto_total.strip()
+        return extrair_dados(texto_total.strip())
 
+    reader = easyocr.Reader(['pt'], gpu=True)
+    
     for pagina in doc:
         # Renderiza a página em imagem (matriz de pixels)
         pix = pagina.get_pixmap(dpi=200)
@@ -140,4 +107,75 @@ def retorna_dados_do_pdf(path):
         texto_total += "\n".join(resultado) + "\n"
 
     doc.close()
-    return texto_total.strip()
+    
+    return extrair_dados(texto_total)
+
+
+tools = [
+    Tool(
+        name="ExtrairPDF",
+        func=extrair_dados_pdf,
+        description="Extrai dados de nota fiscal em PDF ou imagem usando OCR e LLM."
+    ),
+    Tool(
+        name="ExtrairXML",
+        func=extrair_dados_xml,
+        description="Extrai dados de nota fiscal em XML."
+    )
+]
+
+agent = initialize_agent(
+    tools=tools,
+    llm=llm,
+    agent="zero-shot-react-description",
+    verbose=True
+)
+
+def rodar_agente(file):
+    
+    path = salvar_temp(file)
+
+    tipo = detectar_tipo(path)
+    print(f"Tipo detectado: {tipo}")
+
+    if tipo == "xml":
+        resultado = agent.run(f"Use a ferramenta ExtrairXML para processar o arquivo: {path}")
+    elif tipo == "texto":
+        resultado = agent.run(f"Use a ferramenta ExtrairTexto para processar o arquivo: {path}")
+    elif tipo == "pdf":
+        resultado = agent.run(f"Use a ferramenta ExtrairPDF para processar o arquivo: {path}")
+    else:
+        resultado = "Formato não suportado."
+
+    return resultado
+
+
+def retornar_json(file):
+    
+    path = salvar_temp(file)
+
+    tipo = detectar_tipo(path)
+    print(f"Tipo detectado: {tipo}")
+
+    if tipo == "xml":
+        resultado = extrair_dados_xml(path)
+    elif tipo == "pdf":
+        resultado = extrair_dados_pdf(path)
+    else:
+        resultado = "Formato não suportado."
+
+    return limpar_json_resposta(resultado)
+
+
+def limpar_json_resposta(resposta_llm: str):
+    # Remove marcações como ```json e ```
+    texto_limpo = re.sub(r"```(?:json)?\n?|```", "", resposta_llm).strip()
+    
+    try:
+        # Primeira tentativa de parsing
+        dados = json.loads(texto_limpo)
+    except json.JSONDecodeError:
+        # Se ainda for uma string JSON escapada, faz o parsing novamente
+        dados = json.loads(json.loads(texto_limpo))
+    
+    return dados
