@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Assistente</title>
+  <meta name="description" content="Interface simples e elegante para conversar com um agente via API." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+</head>
+<style>
+    :root {
+    --bg: #f7f9fc;
+    --panel: #ffffff;
+    --panel-2: #f1f5fb;
+    --muted: #5f6b7a;
+    --text: #1a1d21;
+    --accent: #3b82f6;
+    --accent-2: #10b981;
+    --danger: #ef4444;
+    --ring: rgba(59,130,246,.35);
+    --shadow: 0 4px 12px rgba(0,0,0,.08);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+    margin: 0;
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+    background: var(--bg);
+    color: var(--text);
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    header {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 16px 20px; border-radius: 12px; background: var(--panel);
+    border: 1px solid #e5e9f0; box-shadow: var(--shadow);
+    }
+    header .title { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: .2px; }
+    .logo { width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+    .meta { color: var(--muted); font-size: 14px; }
+
+
+    .board { margin-top: 18px; background: var(--panel); border: 1px solid #e5e9f0; border-radius: 12px; display: grid; grid-template-rows: 1fr auto; min-height: calc(100vh - 220px); box-shadow: var(--shadow); }
+    .chat { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+
+
+    .msg { display: flex; gap: 12px; align-items: flex-start; }
+    .msg .bubble {
+    max-width: min(720px, 85%);
+    padding: 12px 14px; border-radius: 10px; line-height: 1.5; font-size: 15px; border: 1px solid #e5e9f0;
+    background: #f9fafb;
+    white-space: pre-wrap; word-wrap: break-word; word-break: break-word;
+    }
+    .msg.user { justify-content: flex-end; }
+    .msg.user .bubble { background: #dbeafe; border-color: #bfdbfe; color: #1e3a8a; }
+    .msg.bot .bubble { background: #f3f4f6; color: var(--text); }
+
+
+    .avatar { width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto; margin-top: 2px; }
+    .avatar.bot { background: var(--accent); }
+    .avatar.user { background: var(--accent-2); }
+    .sr-only { position: absolute; left: -9999px; }
+
+
+    .composer { padding: 14px; display: flex; gap: 10px; align-items: flex-end; border-top: 1px solid #e5e9f0; background: var(--panel-2); border-radius: 0 0 12px 12px; }
+    .composer textarea {
+    flex: 1; resize: vertical; min-height: 48px; max-height: 160px; padding: 12px 14px; border-radius: 8px; background: #fff; color: var(--text);
+    border: 1px solid #d1d5db; outline: none; font: inherit; line-height: 1.5;
+    }
+    .composer textarea:focus { border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring); }
+    .actions { display: flex; gap: 8px; align-items: center; }
+    .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 8px; font-weight: 600; letter-spacing: .2px; cursor: pointer;
+    background: var(--accent); color: white; border: none; box-shadow: var(--shadow);
+    }
+    .btn:hover { filter: brightness(1.05); }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+
+
+    .settings { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .settings input[type="text"] {
+    width: min(380px, 60vw);
+    padding: 10px 12px; border-radius: 8px; background: #fff; color: var(--text); border: 1px solid #d1d5db;
+    }
+    .hint { color: var(--muted); font-size: 13px; }
+
+
+    .sysbar { display: grid; gap: 10px; align-items: center; grid-template-columns: 1fr auto; }
+
+
+    .toast { position: fixed; right: 16px; bottom: 16px; background: #fff; color: var(--text); border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; box-shadow: var(--shadow); opacity: 0; transform: translateY(8px); transition: .25s ease; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 720px) {
+    header { flex-direction: column; align-items: flex-start; }
+    .sysbar { grid-template-columns: 1fr; }
+    .settings input[type="text"] { width: 100%; }
+    .msg .bubble { max-width: 100%; white-space: pre-wrap}
+    }
+</style>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">
+        <div class="logo" aria-hidden="true"></div>
+        Tire suas dúvidas e agende uma consulta
+      </div>
+    </header>
+
+    <section class="board" aria-live="polite">
+      <div id="chat" class="chat"></div>
+      <form id="composer" class="composer">
+        <label class="sr-only" for="message">Mensagem</label>
+        <textarea id="message" placeholder="Digite sua mensagem e pressione Enter…"></textarea>
+        <div class="actions">
+          <button type="submit" id="sendBtn" class="btn">↩︎ Enviar</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="assertive"></div>
+
+  <script>
+    // =============================
+    // CONFIG BÁSICA
+    // =============================
+    const state = {
+      history: [] // [{role:'user'|'assistant', content:'...'}]
+    };
+
+    const el = {
+      chat: document.getElementById('chat'),
+      message: document.getElementById('message'),
+      composer: document.getElementById('composer'),
+      sendBtn: document.getElementById('sendBtn'),
+      toast: document.getElementById('toast')
+    };
+
+    // Envio com Enter
+    el.message.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        el.composer.requestSubmit();
+      }
+    });
+
+    el.composer.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = el.message.value.trim();
+      if (!text) return;
+
+      appendMessage('user', text);
+      el.message.value = '';
+      toggleSending(true);
+
+      try {
+        const payload = { pergunta: text};
+        const headers = { 'Content-Type': 'application/json' };
+
+        // ======== CHAMADA A API ========
+        const res = await fetch("/chat", {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+         if (res.headers.get("content-type").includes("application/json")) {
+            data = await res.json();
+
+            const reply = data.resposta || data.message || data.answer || JSON.stringify(data);
+            appendMessage('assistant', reply);
+            
+          } else {
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "relatorio.xlsx";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+          }
+
+      } catch (err) {
+        console.error(err);
+        appendMessage('assistant', '⚠️ Erro ao contatar a API. Verifique a URL/Token e o formato de resposta.');
+        tip('Falha na requisição: ' + (err.message || err), true);
+      } finally {
+        toggleSending(false);
+        window.setTimeout(el.message.focus(),100);
+      }
+    });
+
+    function appendMessage(role, content) {
+      state.history.push({ role, content });
+
+      const row = document.createElement('div');
+      row.className = `msg ${role}`;
+
+      const avatar = document.createElement('div');
+      avatar.className = `avatar ${role === 'user' ? 'user' : 'bot'}`;
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = content;
+
+      if (role === 'user') {
+        row.appendChild(bubble);
+        row.appendChild(avatar);
+      } else {
+        row.appendChild(avatar);
+        row.appendChild(bubble);
+      }
+
+      el.chat.appendChild(row);
+      // scroll suave até o final
+      el.chat.scrollTo({ top: el.chat.scrollHeight, behavior: 'smooth' });
+    }
+
+    function toggleSending(isSending) {
+      el.sendBtn.disabled = isSending;
+      el.message.disabled = isSending;
+      el.sendBtn.textContent = isSending ? 'Enviando…' : '↩︎ Enviar';
+    }
+
+    function tip(text, isError = false) {
+      el.toast.textContent = text;
+      el.toast.style.borderColor = isError ? 'rgba(255,107,107,.45)' : 'rgba(255,255,255,.08)';
+      el.toast.classList.add('show');
+      setTimeout(() => el.toast.classList.remove('show'), 2200);
+    }
+
+    // Mensagem inicial
+    appendMessage('assistant', 'Olá! Como posso ajudar?');
+  </script>
+</body>
+</html>
