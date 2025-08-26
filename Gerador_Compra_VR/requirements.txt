@@ -1,6 +1,6 @@
 fastapi==0.116.1
-PyMuPDF
+fitz==0.0.1.dev2
 huggingface_hub==0.33.0
-uvicorn[standard]
-pydantic
-openai
+pandas==2.3.2
+pydantic==2.11.7
+workalendar==17.0.0

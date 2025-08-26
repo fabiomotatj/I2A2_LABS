@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from agent_core import identificar_intencao_usuario, gera_planilha
+from agent_core import identificar_intencao_usuario, gera_planilha, responde_pergunta_usuario
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
@@ -33,7 +33,7 @@ def chat(req: Requisicao):
     intent = identificar_intencao_usuario(req.pergunta) 
 
     if "EXPLICAR_PROCESSO" in intent:
-        return JSONResponse({"resposta": "O cálculo usa admissões, afastamentos, férias, estagiários e aprendizes."})
+        return JSONResponse({"resposta": responde_pergunta_usuario(req.pergunta)})
     elif "CONSULTAR_RESULTADO" in intent:
         return JSONResponse({"resposta": "Foram encontrados 50 funcionários ativos."})
     elif "GERAR_PLANILHA" in intent:

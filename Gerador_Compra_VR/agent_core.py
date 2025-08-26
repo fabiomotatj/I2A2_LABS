@@ -1,7 +1,7 @@
 import os
 from huggingface_hub import InferenceClient
 import pandas as pd
-from utils import dias_uteis
+import fitz
 from tratamento import retorna_df_sem_anomalias, retorna_df_admissao, retorna_df_afastamentos, retorna_df_desligamento, retorna_df_ferias
 
 client = InferenceClient(
@@ -25,6 +25,33 @@ def identificar_intencao_usuario(pergunta):
     - CONSULTAR_RESULTADO
 
     segue a pergunta do usuário:
+    Pergunta:
+    {pergunta}
+    """
+
+    completion = client.chat.completions.create(
+        model="meta-llama/Llama-3.1-8B-Instruct",
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+    )
+
+    return completion.choices[0].message.content;
+
+def responde_pergunta_usuario(pergunta):
+
+    documento = extrair_texto_pdf()
+
+    prompt = f"""
+    O seguinte ducumento contém as instruçoes para a geração de vale refeição da empresa:
+
+    {documento}
+
+    Responda os questionamentos do usuário sobre o processo, com base nesse documento.
+
     Pergunta:
     {pergunta}
     """
@@ -90,3 +117,20 @@ def gera_planilha():
     df_consolidado.to_excel("saida/vr_mensal.xlsx", index=False)
 
     return "saida/vr_mensal.xlsx"
+
+def extrair_texto_pdf() -> str:
+    texto_total = ""
+
+    # Abre o PDF
+    doc = fitz.open("dados/Gerador_VR.pdf")
+
+    for pagina in doc:
+        texto = pagina.get_text()
+        if texto.strip():
+            texto_total += texto + "\n"
+
+    if texto_total.strip():
+        return texto_total.strip()
+
+    doc.close()
+    return texto_total.strip()
